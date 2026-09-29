@@ -1,0 +1,55 @@
+# vps-github-backup configuration. Copy to backup.conf and edit.
+# This file is sourced by bash: arrays use ( "a" "b" ), no spaces around "=".
+
+# ---- destination -------------------------------------------------------------
+# A PRIVATE GitHub repository. Use a deploy key with write access (see README).
+REPO_REMOTE="git@github.com:YOUR_USER/server-backup.git"
+SSH_KEY="/root/.ssh/backup_deploy"
+
+# ---- what to back up -----------------------------------------------------------
+# Each directory becomes code/<path>.tar.zst, e.g. /opt/my-app -> code/opt_my-app.tar.zst
+# (includes .env files!)
+TAR_DIRS=(
+  "/opt/my-app"
+  "/var/www/my-site"
+)
+TAR_EXCLUDES=(node_modules .git __pycache__ vendor "*.log" logs "*.bak")
+
+# Large folders that rarely change (images, game assets, uploads).
+# Stored as raw files so git uploads each file only once.
+RAW_DIRS=(
+  # "/var/www/my-site/public/uploads"
+)
+
+# Databases
+SQLITE_DBS=(
+  # "/opt/my-app/data/app.db"
+)
+POSTGRES=0        # 1 = pg_dumpall (runs as the postgres user)
+MYSQL=0           # 1 = mysqldump --all-databases (uses ~/.my.cnf credentials)
+REDIS=0           # 1 = SAVE + copy dump.rdb
+REDIS_RDB=/var/lib/redis/dump.rdb
+REDIS_CLI_ARGS=()   # e.g. (-a "password") or (-s /run/redis/redis.sock)
+
+# System configuration (paths relative to /)
+ETC_PATHS=(etc/nginx etc/letsencrypt etc/cron.d etc/systemd/system etc/fail2ban etc/ufw etc/hosts)
+PM2=0             # 1 = include ~/.pm2/dump.pm2 (run "pm2 save" first)
+
+# ---- alerts (Discord) -----------------------------------------------------------
+# Option A: channel webhook
+DISCORD_WEBHOOK_URL=""
+# Option B: direct message from your bot (bot must share a server with you)
+DISCORD_BOT_TOKEN=""
+DISCORD_USER_IDS=""          # comma separated user IDs
+STALE_HOURS=26               # watchdog alert when no success for this long
+
+# ---- tuning --------------------------------------------------------------------
+# STAGING is wiped on every run: use a dedicated folder, never a real data folder.
+STAGING=/var/backups/vps-github-backup
+STATE_DIR=/var/lib/vps-github-backup
+LOG=/var/log/vps-github-backup.log
+LOG_MAX_KB=5120              # trim the log to its last 2000 lines above this size
+ZSTD_LEVEL=10
+SPLIT_MB=95                  # GitHub hard limit is 100 MB per file
+MIN_FREE_GB=5
+MIN_DUMP_BYTES=1000          # alert if a database dump is smaller than this

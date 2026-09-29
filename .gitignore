@@ -1,0 +1,2 @@
+# real config holds secrets (Discord token, webhook)
+backup.conf
