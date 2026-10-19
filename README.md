@@ -94,7 +94,7 @@ See [`backup.conf.example`](backup.conf.example) for every option.
 
 You get an alert when:
 
-- a step fails (archive, database dump, push)
+- a step fails (archive, database dump, push); the alert quotes git's error, and pushes are retried twice on network errors first
 - a database dump is smaller than `MIN_DUMP_BYTES`
 - free disk space is below `MIN_FREE_GB`
 - no backup has succeeded for `STALE_HOURS` (watchdog)

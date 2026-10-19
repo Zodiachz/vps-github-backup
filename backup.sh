@@ -86,6 +86,30 @@ zst() { zstd -q -f -T0 "-$ZSTD_LEVEL" "$@"; }
 # unique, readable archive name from a path: /opt/my app -> opt_my-app
 pname() { local p="${1%/}"; p="${p#/}"; echo "$p" | tr '/ ' '_-'; }
 as_postgres() { if command -v sudo >/dev/null; then sudo -u postgres "$@"; else runuser -u postgres -- "$@"; fi; }
+# Long pushes often die on a network hiccup: retry twice (after 2 and 4 min), but
+# not on errors a retry cannot fix (auth, missing repo, GitHub size limits).
+# PUSH_ERR keeps git's most telling error line for the alert.
+PUSH_ERR=""
+push_snapshot() {
+  local out rc attempt
+  for attempt in 1 2 3; do
+    out=$(timeout 3000 git push -q -f origin "$1:refs/heads/main" 2>&1); rc=$?
+    [ $rc -eq 0 ] && return 0
+    [ -n "$out" ] && echo "$out"
+    PUSH_ERR=$(printf '%s\n' "$out" | grep -m1 -iE 'remote: error|denied|not found|remote rejected|timed out|reset|broken pipe|hung up')
+    [ -n "$PUSH_ERR" ] || PUSH_ERR=$(printf '%s\n' "$out" | grep -m1 -iE 'fatal|error')
+    [ -n "$PUSH_ERR" ] || PUSH_ERR=$(printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | tail -n1)
+    [ $rc -eq 124 ] && PUSH_ERR="timed out after 50 min"
+    [ -n "$PUSH_ERR" ] || PUSH_ERR="exit code $rc"
+    PUSH_ERR=$(printf '%s' "$PUSH_ERR" | sed 's/[[:space:]]*$//' | cut -c1-200)
+    printf '%s\n' "$out" | grep -qiE 'permission denied|repository not found|exceeds|pre-receive hook declined' && return 1
+    if [ "$attempt" -lt 3 ]; then
+      echo "  push attempt $attempt failed, retrying in $((attempt * 2)) min"
+      sleep $((attempt * 120))
+    fi
+  done
+  return 1
+}
 [ -n "$SSH_KEY" ] && export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 
 echo "=== $TS start$([ "$DRY_RUN" = 1 ] && echo ' (dry run)') ==="
@@ -175,12 +199,15 @@ if [ "$DRY_RUN" = 1 ]; then
   echo "  dry run: skipping commit/push. Staging tree: $STAGING"
 else
   if git add -A && tree=$(git write-tree) \
-     && commit=$(git commit-tree "$tree" -m "snapshot $TS") \
-     && timeout 3000 git push -q -f origin "$commit:refs/heads/main"; then
-    git update-ref refs/heads/main "$commit"
-    echo "  pushed $commit"
+     && commit=$(git commit-tree "$tree" -m "snapshot $TS"); then
+    if push_snapshot "$commit"; then
+      git update-ref refs/heads/main "$commit"
+      echo "  pushed $commit"
+    else
+      fail "git push: $PUSH_ERR"
+    fi
   else
-    fail "git push"
+    fail "git commit"
   fi
   git reflog expire --expire=now --all; git gc -q --prune=now
 fi
