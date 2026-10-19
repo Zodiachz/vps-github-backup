@@ -96,7 +96,7 @@ push_snapshot() {
     out=$(timeout 3000 git push -q -f origin "$1:refs/heads/main" 2>&1); rc=$?
     [ $rc -eq 0 ] && return 0
     [ -n "$out" ] && echo "$out"
-    PUSH_ERR=$(printf '%s\n' "$out" | grep -m1 -iE 'remote: error|denied|not found|remote rejected|timed out|reset|broken pipe|hung up')
+    PUSH_ERR=$(printf '%s\n' "$out" | grep -m1 -iE 'remote: (error|fatal)|denied|not found|remote rejected|timed out|reset|broken pipe|hung up')
     [ -n "$PUSH_ERR" ] || PUSH_ERR=$(printf '%s\n' "$out" | grep -m1 -iE 'fatal|error')
     [ -n "$PUSH_ERR" ] || PUSH_ERR=$(printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | tail -n1)
     [ $rc -eq 124 ] && PUSH_ERR="timed out after 50 min"
